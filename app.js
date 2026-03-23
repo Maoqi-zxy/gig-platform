@@ -1076,4 +1076,14 @@ app.listen(PORT, () => {
   `);
 });
 
+// ========== 健康检查端点 (用于 Railway 部署) ==========
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 module.exports = app;
