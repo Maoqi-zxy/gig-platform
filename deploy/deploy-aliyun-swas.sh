@@ -1,7 +1,7 @@
 #!/bin/bash
 # ===========================================
 # 阿里云轻量应用服务器部署脚本
-# 隔离部署版 - 不影响现有服务
+# 隔离部署版 - admin 用户
 # ===========================================
 
 set -e
@@ -11,46 +11,55 @@ echo "   灵活用工平台 - 阿里云轻量服务器部署"
 echo "========================================== 🚀"
 echo ""
 echo "服务器：106.14.172.39 (cn-shanghai)"
-echo "版本：隔离部署 v1.0"
+echo "用户：admin"
+echo "版本：隔离部署 v1.1"
 echo ""
 
-# ===========================================
-# 1. 创建部署用户和目录
-# ===========================================
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "步骤 1/7: 创建部署用户和目录"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
+# 部署目录（admin 用户）
+DEPLOY_DIR="/home/admin/flex-platform"
 
-DEPLOY_DIR="/home/giguser/flex-platform"
-
-if id "giguser" &>/dev/null; then
-    echo "⚠️  用户 giguser 已存在，跳过创建"
-else
-    echo "✅ 创建部署用户 giguser"
-    useradd -m -s /bin/bash giguser
-    echo "giguser:test123" | chpasswd  # 临时密码，建议修改
-    echo "   用户名：giguser"
-    echo "   临时密码：test123"
+# 检查是否以 admin 用户运行
+CURRENT_USER=$(whoami)
+if [ "$CURRENT_USER" != "admin" ]; then
+    echo "⚠️  警告：当前用户是 $CURRENT_USER，建议使用 admin 用户运行此脚本"
+    echo "   如果是 root 用户执行，请使用：su - admin -c 'bash /path/to/deploy.sh'"
+    echo ""
 fi
+
+# ===========================================
+# 1. 检查环境和创建目录
+# ===========================================
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "步骤 1/7: 检查环境并创建目录"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
 
 if [ ! -d "$DEPLOY_DIR" ]; then
     echo "✅ 创建部署目录：$DEPLOY_DIR"
     mkdir -p $DEPLOY_DIR/{backend,frontend,nginx,logs,pm2}
-    chown -R giguser:giguser $DEPLOY_DIR
+    chown -R admin:admin $DEPLOY_DIR
+    echo "   所有者：admin:admin"
 else
-    echo "⚠️  部署目录已存在"
+    echo "ℹ️  部署目录已存在：$DEPLOY_DIR"
 fi
 
 # ===========================================
-# 2. 安装依赖
+# 2. 安装依赖（需要 root 权限）
 # ===========================================
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "步骤 2/7: 安装系统依赖"
+echo "步骤 2/7: 安装系统依赖（需要 sudo 权限）"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+
+# 检查是否需要 sudo
+if [ "$EUID" -ne 0 ]; then
+    echo "⚠️  使用 sudo 执行安装..."
+    SUDO_CMD="sudo"
+else
+    SUDO_CMD=""
+fi
 
 # 检查 Node.js
 if command -v node &> /dev/null; then
@@ -58,9 +67,8 @@ if command -v node &> /dev/null; then
     echo "ℹ️  Node.js 已安装：$NODE_VERSION"
 else
     echo "✅ 安装 Node.js"
-    # Alibaba Cloud Linux 基于 CentOS，使用 EPEL
-    yum install -y epel-release
-    yum install -y nodejs npm
+    $SUDO_CMD yum install -y epel-release
+    $SUDO_CMD yum install -y nodejs npm
 fi
 
 # 检查 Nginx
@@ -68,7 +76,7 @@ if command -v nginx &> /dev/null; then
     echo "ℹ️  Nginx 已安装"
 else
     echo "✅ 安装 Nginx"
-    yum install -y nginx
+    $SUDO_CMD yum install -y nginx
 fi
 
 # 检查 Git
@@ -76,7 +84,7 @@ if command -v git &> /dev/null; then
     echo "ℹ️  Git 已安装"
 else
     echo "✅ 安装 Git"
-    yum install -y git
+    $SUDO_CMD yum install -y git
 fi
 
 # ===========================================
@@ -106,7 +114,7 @@ cat > .env << EOF
 NODE_ENV=production
 PORT=8081
 DATABASE_PATH=$DEPLOY_DIR/backend/gig_platform.db
-JWT_SECRET=gig-platform-aliyun-$(date +%Y%m%d%H%M%S)-isolate
+JWT_SECRET=gig-platform-aliyun-admin-$(date +%Y%m%d%H%M%S)-isolate
 CORS_ORIGIN=http://106.14.172.39:8080
 EOF
 
@@ -180,7 +188,7 @@ cd $DEPLOY_DIR
 rm -rf frontend-temp
 
 echo "✅ 设置权限"
-chown -R giguser:giguser $DEPLOY_DIR/frontend
+chown -R admin:admin $DEPLOY_DIR/frontend
 
 # 恢复备份配置（可选）
 if [ -d "$FRONTEND_BAK" ]; then
@@ -207,13 +215,12 @@ fi
 
 echo "✅ 创建 Nginx 配置"
 cat > $NGINX_CONF << 'NGINX_EOF'
-# 灵活用工平台 - 隔离部署
-# 前端服务
+# 灵活用工平台 - 隔离部署（admin 用户）
 server {
     listen 8080;
     server_name 106.14.172.39;
     
-    root /home/giguser/flex-platform/frontend/dist;
+    root /home/admin/flex-platform/frontend/dist;
     index index.html;
     
     # SPA fallback
@@ -238,8 +245,8 @@ server {
     }
     
     # 日志
-    access_log /home/giguser/flex-platform/logs/nginx-access.log;
-    error_log /home/giguser/flex-platform/logs/nginx-error.log;
+    access_log /home/admin/flex-platform/logs/nginx-access.log;
+    error_log /home/admin/flex-platform/logs/nginx-error.log;
 }
 NGINX_EOF
 
@@ -312,10 +319,10 @@ echo "  systemctl restart nginx"
 echo ""
 echo "运维说明："
 echo "  - 隔离端口：前端 8080，后端 8081"
-echo "  - 隔离目录：/home/giguser/flex-platform/"
-echo "  - 隔离用户：giguser"
-echo "  - 不影响现有服务"
+echo "  - 隔离目录：/home/admin/flex-platform/"
+echo "  - 隔离用户：admin"
+echo "  - 不影响现有服务（root 用户或其他用户的服务）"
 echo ""
 echo "运维文档："
-echo "  - /home/giguser/flex-platform/deploy/阿里云轻量服务器部署方案.md"
+echo "  - /home/admin/flex-platform/deploy/阿里云轻量服务器部署方案.md"
 echo ""
