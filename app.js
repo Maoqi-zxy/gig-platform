@@ -1062,13 +1062,13 @@ app.get('/api/my/applications', authMiddleware, (req, res) => {
 });
 
 // 启动服务
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║           🚀 灵活用工平台后端服务已启动                    ║
 ╠═══════════════════════════════════════════════════════════╣
-║  服务地址：http://localhost:${PORT}                            
-║  API 文档：http://localhost:${PORT}/api-docs                   
+║  服务地址：http://0.0.0.0:${PORT} (局域网可访问)                            
+║  API 文档：http://0.0.0.0:${PORT}/api-docs                   
 ║                                                           ║
 ║  技术栈: Node.js + Express + SQLite + JWT                 ║
 ║  数据库：./gig_platform.db                                ║

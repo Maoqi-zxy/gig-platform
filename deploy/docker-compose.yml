@@ -1,0 +1,112 @@
+# ===========================================
+# 灵活用工平台 - 本地开发环境
+# ===========================================
+# 用于本地测试和开发，模拟生产环境架构
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # MongoDB 数据库
+  # ===========================================
+  mongodb:
+    image: mongo:7.0
+    container_name: flex-gig-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: localdev_password_123
+      MONGO_INITDB_DATABASE: flex-gig
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - flex-gig-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================
+  # 后端 API 服务
+  # ===========================================
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: flex-gig-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      MONGODB_URI: mongodb://admin:localdev_password_123@mongodb:27017/flex-gig?authSource=admin
+      JWT_SECRET: local_dev_jwt_secret_key_change_in_production
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:3000
+      LOG_LEVEL: debug
+    ports:
+      - "3001:3000"
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - flex-gig-network
+    command: npm run dev
+
+  # ===========================================
+  # 前端服务
+  # ===========================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: flex-gig-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_ENV: development
+      NEXT_PUBLIC_ENABLE_ANALYTICS: false
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app
+      - /app/.next
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - flex-gig-network
+    command: npm run dev
+
+  # ===========================================
+  # Redis 缓存 (可选)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: flex-gig-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - flex-gig-network
+    command: redis-server --appendonly yes
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  flex-gig-network:
+    driver: bridge
