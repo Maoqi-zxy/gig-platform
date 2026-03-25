@@ -117,7 +117,17 @@ fi
 # 移动新构建的文件
 echo "✅ 移动构建产物"
 mkdir -p frontend
-cp -r dist/* frontend/
+# 确保从正确的源目录复制
+if [ -d "/tmp/flexible-work-platform-main/dist" ]; then
+    cp -r /tmp/flexible-work-platform-main/dist/* frontend/
+elif [ -d "./dist" ]; then
+    cp -r dist/* frontend/
+else
+    echo "❌ 找不到 dist 目录"
+    find . -name "dist" -type d 2>/dev/null
+    find /tmp -name "dist" -type d 2>/dev/null | head -5
+    exit 1
+fi
 
 echo "✅ 验证文件"
 ls -la frontend/ | head -15

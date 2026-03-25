@@ -491,23 +491,45 @@ app.post('/api/auth/register', (req, res) => {
 
   try {
     // 检查邮箱是否已存在
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-    if (existing) {
+    const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (existingEmail) {
       return res.status(400).json({ success: false, message: '邮箱已被注册' });
+    }
+
+    // 检查用户名是否已存在
+    const existingUser = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: '用户名已被占用' });
     }
 
     // 加密密码
     const passwordHash = bcrypt.hashSync(password, 10);
 
+    // 处理 skills：如果是数组则转换为逗号分隔的字符串
+    const skillsStr = Array.isArray(skills) ? skills.join(',') : (skills || '');
+
     // 插入用户
     const result = db.prepare(`
       INSERT INTO users (username, email, password_hash, role, company_name, skills, phone)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(username, email, passwordHash, role, company_name, skills, phone);
+    `).run(username, email, passwordHash, role, company_name, skillsStr, phone);
+
+    // 生成 JWT Token
+    const token = jwt.sign(
+      { id: result.lastInsertRowid, email, role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
     res.status(201).json({
       success: true,
-      data: { id: result.lastInsertRowid, username, email, role },
+      data: {
+        id: result.lastInsertRowid,
+        username,
+        email,
+        role,
+        token
+      },
       message: '注册成功'
     });
   } catch (error) {
@@ -932,7 +954,7 @@ app.post('/api/submissions/:id/review', authMiddleware, (req, res) => {
     if (status === 'approved') {
       db.prepare(`
         UPDATE tasks
-        SET status = 'completed', freelancer_id = ?, updated_at = CURRENT_TIMESTAMP
+        SET status = 'in_progress', freelancer_id = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(submission.freelancer_id, submission.task_id);
     }
@@ -981,11 +1003,14 @@ app.put('/api/profile', authMiddleware, (req, res) => {
   const { username, phone, avatar_url, skills } = req.body;
 
   try {
+    // 处理 skills：如果是数组则转换为逗号分隔的字符串
+    const skillsStr = Array.isArray(skills) ? skills.join(',') : (skills || '');
+    
     db.prepare(`
       UPDATE users
       SET username = ?, phone = ?, avatar_url = ?, skills = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(username, phone, avatar_url, skills, req.user.id);
+    `).run(username, phone, avatar_url, skillsStr, req.user.id);
 
     res.json({ success: true, message: '个人信息更新成功' });
   } catch (error) {
